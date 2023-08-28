@@ -18,6 +18,10 @@ void* crivo(void *threadArg){
     argumentThread threadArgument = *(argumentThread *)threadArg; // ou     argumentThread *threadArgument = (argumentThread *)threadArg;
 
     for(int i = threadArgument.begin; i <= threadArgument.end;i++){
+        // pthread_mutex_lock(&printMutexDebug);
+        // std::cout << "Thread " << pthread_self() << " begin " << threadArgument.begin << " end " << threadArgument.end << std::endl;
+        // std::cout << i << std::endl;
+        // pthread_mutex_unlock(&printMutexDebug);
         if(numbers[i]){
             for(int j = i*i; j < sizeVectorCrivo; j+=i){
                 pthread_mutex_lock(&mutex);
@@ -47,14 +51,19 @@ int main(){
     }
 
     int indexPerThread = sizeVectorCrivo/numThreads;
+    std::cout << "Index per thread: " << indexPerThread << std::endl;
     argumentThread argumentThreads[numThreads];
 
     //Inicialização das threads
     for(int i = 0;i < numThreads;i++){
-        argumentThreads[i].begin = lastChar + 1; 
-        argumentThreads[i].end = argumentThreads[i].begin + indexPerThread; 
+        std::cout << "Iteração/Threads: " << i << std::endl;
+        std::cout << "Last char before: " << lastChar << std::endl;
+        argumentThreads[i].begin = lastChar + 1; //0,
+        argumentThreads[i].end = argumentThreads[i].begin + indexPerThread; //
         lastChar = argumentThreads[i].end;
-        if(i == numThreads - 1) argumentThreads[i].end = sizeVectorCrivo;
+        std::cout << "Last char after: " << lastChar << std::endl;
+        std::cout << "Begin: " << argumentThreads[i].begin << std::endl;
+        std::cout << "End: " << argumentThreads[i].end << std::endl;
 
         pthread_create(&threads[i], NULL, crivo ,&argumentThreads[i]);
     }
