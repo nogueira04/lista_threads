@@ -112,13 +112,13 @@ int main() {
     database = (long long int*)calloc(tamanhoArray, sizeof(long long int));
 
     for (int i = 0; i < t_escrita; i++) {
-        int *tid = malloc(sizeof(int));
+        int *tid = (int *) malloc(sizeof(int));
         *tid = i;
         pthread_create(&ESCRITA[i], NULL, escreverSGBD, tid);
     }
 
     for (int j = 0; j < t_leitura; j++) {
-        int *tid = malloc(sizeof(int));
+        int *tid = (int *) malloc(sizeof(int));
         *tid = j;
         pthread_create(&LEITURA[j], NULL, leituraSGBD, tid);
     }
