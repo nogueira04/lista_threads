@@ -12,19 +12,34 @@ schedule   -> escalonamento
 chunk_size -> número de iterações por thread
 passo      -> incremento 
 */
+//Argumento das threads
+struct staticData {
+    int beginIndex, endIndex, intervalIndex;
+    int (*f)(int);
+    int passo;
+    staticData** staticDataMatrixStruct;
+};
 
-typedef struct {
-    int beginIndex, endIndex;
-} staticData;
+int func(int a) { return a + 1; }
+
 
 int OMPNumThreads = 6; 
 void ompFor(int inicio, int passo, int final, int schedule, int chunk_size, void (*f)(int));
-void*rotinaStatic(void* data);
+void*rotinaStatic(void* data) {
+    staticData* dataTemp = (staticData*) data;
+    dataTemp->f = &func;
+    //Roda pelas threads e intervalos e realiza a função
+    for (int i = 0; i < dataTemp->intervalIndex; i++) {
+        for (int j = dataTemp->beginIndex; j < dataTemp->endIndex; j++) {
+            dataTemp->f(j);
+        }
+    }
+}
 
 int main(){
     
     int scheduleFlag;
-    std::cout << "Forma de escalonamento (0: Static 1: Dynamic 2: Guided): " << scheduleFlag << std::endl;
+    std::cout << "Forma de escalonamento (0: Static 1: Dynamic 2: Guided): ";
     std::cin >> scheduleFlag;
     
 
@@ -40,37 +55,52 @@ void omp_for(int inicio, int passo, int final, int schedule, int chunk_size, voi
     
         switch(schedule) {
             case STATIC: {
-                int ratio = (final - inicio) / passo; 
-                int ratioRemainder = (final - inicio) % passo; 
-                int iterationDivide = ratio / (OMPNumThreads * chunk_size); 
-                int iterationDivideRemainder = ratio % (OMPNumThreads * chunk_size); 
-                pthread_t threadArray[OMPNumThreads];
+                int ratio = (final - inicio) / passo; //iterações
+                int ratioRemainder = (final - inicio) % passo; //resto de iterações
+                int iterationDivide = ratio / (OMPNumThreads * chunk_size); //quantos intervalos cada thread deve receber
+                int iterationDivideRemainder = ratio % (OMPNumThreads * chunk_size); //ver se é possivél dividir igualmente
 
-                if(ratioRemainder == 0 && iterationDivideRemainder == 0){
-                    int intervalIndex = 0;
+                pthread_t threadArray[OMPNumThreads]; //array de threads
+                staticData threadArgument[OMPNumThreads]; //argumento de cada thread
+                staticData** staticDataMatrix = new staticData*[OMPNumThreads]; //matriz de dados guardando o início e o fim de cada intervalo
+                    for (int i = 0; i < OMPNumThreads; i++) staticDataMatrix[i] = new staticData[iterationDivide];        
 
-                    staticData** staticDataMatrix = new staticData*[OMPNumThreads]; 
-                    for (int i = 0; i < OMPNumThreads; i++) staticDataMatrix[i] = new staticData[iterationDivide];                 
+                if(ratioRemainder == 0 && iterationDivideRemainder == 0){ //caso dê para dividir igualmente
+                    int intervalIndex = 0; //indice do intervalo
 
+                                     
+                //Aqui se dividem cada intervalo e cada indice de inicio e fim para cada thread 
                     while (intervalIndex < iterationDivide) {
                         for (int i = 0; i < OMPNumThreads; i++) {
                             staticDataMatrix[i][intervalIndex].beginIndex = (passo * chunk_size) * (i + (OMPNumThreads * intervalIndex));
                             staticDataMatrix[i][intervalIndex].endIndex = staticDataMatrix[i][intervalIndex].beginIndex + ((chunk_size - 1) * passo);
-                        
-                            pthread_create(&threadArray[i], NULL, rotinaStatic, (void*) &staticDataMatrix[i][intervalIndex]);
+                            staticDataMatrix[i][intervalIndex].intervalIndex = intervalIndex;
+                            threadArgument[i].passo = passo;
+                            threadArgument[i].intervalIndex = intervalIndex;
+                            
+                           
                         }
                         intervalIndex++;
-
-                        for (int i = 0; i < OMPNumThreads; i++) pthread_join(threadArray[i], NULL);
                     }
-                } else {
-                    int indexTemp = 0;
-                    bool endLoop = false;
-                    int intervalIndex = 0;
-                    int chunkSizeSum = 0;
-                    staticData** staticDataMatrix = new staticData*[OMPNumThreads]; 
-                    for (int i = 0; i < OMPNumThreads; i++) staticDataMatrix[i] = new staticData[iterationDivide];                 
-
+                    //Aqui se iguala a matriz feita com a matriz do argumento da thread
+                    for(int i = 0;i < intervalIndex || i == 0;i++){
+                        for(int j = 0; j < OMPNumThreads;j++){
+                            threadArgument[j].staticDataMatrixStruct[i][j] = staticDataMatrix[i][j];
+                        }
+                    }
+                    //Criações das threads
+                    for(int i = 0; i < OMPNumThreads;i++){
+                        pthread_create(&threadArray[i],NULL,rotinaStatic,(void*) &threadArgument[i]);
+                    }
+                    for (int i = 0; i < OMPNumThreads; i++) pthread_join(threadArray[i], NULL);
+                    
+                } else { //Caso a divisão não seja igual
+                    int indexTemp = 0; //indice de cada thread
+                    bool endLoop = false; // booleano para saber se o loop deve acabar
+                    int intervalIndex = 0; //indice do intervalo
+                    int chunkSizeSum = 0; //soma para ver quantos indices foram processados
+                    
+                    //Aqui tenta dividir o máximo que der com o chunk_size fornecido
                     while(!endLoop){
                         staticDataMatrix[indexTemp][intervalIndex].beginIndex = (passo * chunk_size) * (indexTemp + (OMPNumThreads * intervalIndex));
                         staticDataMatrix[indexTemp][intervalIndex].endIndex = staticDataMatrix[indexTemp][intervalIndex].beginIndex + ((chunk_size - 1) * passo);
@@ -81,10 +111,11 @@ void omp_for(int inicio, int passo, int final, int schedule, int chunk_size, voi
                             intervalIndex++;
                         }
                         chunkSizeSum += chunk_size;
+                        //Se o chunk_size não for suficiente para terminar o número total de indices ele para o loop
                         if(ratio/((OMPNumThreads - 1) - indexTemp) > chunk_size) endLoop = true;
                     }
 
-                    
+                    //Se o que sobrou de indices for divisivel pelas threads que falta, ele divide igualmente entre essas duas threads
                     if(ratio % ((OMPNumThreads - 1) - indexTemp) == 0){
                         int ratioPerThread = ratio/((OMPNumThreads - 1) - indexTemp);
                         int lastIndex = staticDataMatrix[indexTemp][intervalIndex].endIndex;
@@ -100,17 +131,35 @@ void omp_for(int inicio, int passo, int final, int schedule, int chunk_size, voi
                             indexTemp = 0;
                             intervalIndex++;
                             }
-                        } 
-                        for (int i = 0; i < OMPNumThreads; i++) pthread_create(&threadArray[i], NULL, rotinaStatic, (void*) &staticDataMatrix[i][intervalIndex]);
+                        }
+                       for(int i = 0;i < intervalIndex || i == 0;i++){
+                            for(int j = 0; j < OMPNumThreads;j++){
+                                threadArgument[j].staticDataMatrixStruct[i][j] = staticDataMatrix[i][j];
+                            }
+                        }
+                        for (int i = 0; i < OMPNumThreads; i++) {
+                            if (intervalIndex > 0)
+                                for (int j = 0; j < intervalIndex; j++) {
+                                    threadArgument[i].passo = passo;
+                                    threadArgument[i].intervalIndex = intervalIndex;
+                                    pthread_create(&threadArray[i], NULL, rotinaStatic, (void*) &threadArgument[i]);
+                                }
+                            else {
+                                threadArgument[i].passo = passo;
+                                pthread_create(&threadArray[i], NULL, rotinaStatic, (void*) &threadArgument[i]);
+                            }
+                            
+                        }
                         for (int i = 0; i < OMPNumThreads; i++) pthread_join(threadArray[i], NULL);
 
                     } else {
+                        //Se não ele faz um cálculo para ver quantos indices cada thread deve receber, geralmente colocando o resto desse cálculo nas outras threads se houver mais de uma
                         
-                        int ratioPerThreadRemainder = ratio % OMPNumThreads; //2
-                        int ratioInitial = (final - inicio) / passo; //12 
-                        int ratioRemainder = ratioInitial - chunkSizeSum; //13 - 6 = 7
-                        int ceilRatioRemainder = ceil(ratioRemainder / ratioPerThreadRemainder) + 1; //7/2 = 3 + 1 = 4
-                        int lastIndex = staticDataMatrix[indexTemp][intervalIndex].endIndex;
+                        int ratioPerThreadRemainder = ratio % OMPNumThreads; // O resto do que sobrou pelo número de threads
+                        int ratioInitial = (final - inicio) / passo; //Indice total
+                        int ratioRemainder = ratioInitial - chunkSizeSum; //O que sobrou de indices
+                        int ceilRatioRemainder = ceil(ratioRemainder / ratioPerThreadRemainder) + 1; //O que sobrou de indices dividido pelo resto de indices que cada thread deve receber
+                        int lastIndex = staticDataMatrix[indexTemp][intervalIndex].endIndex; //ultimo indice processado
                         while(ratioRemainder >= ceilRatioRemainder){
                             indexTemp++;
                             staticDataMatrix[indexTemp][intervalIndex].beginIndex = (lastIndex + 1) * passo;
@@ -133,30 +182,33 @@ void omp_for(int inicio, int passo, int final, int schedule, int chunk_size, voi
                             
 
                         }
-                         for (int i = 0; i < OMPNumThreads; i++) {
-                            pthread_create(&threadArray[i], NULL, rotinaStatic, (void*) &staticDataMatrix[i][intervalIndex]);
+                        for(int i = 0;i < intervalIndex || i == 0;i++){
+                            for(int j = 0; j < OMPNumThreads;j++){
+                                threadArgument[j].staticDataMatrixStruct[i][j] = staticDataMatrix[i][j];
+                            }
                         }
-
-                        for (int i = 0; i < OMPNumThreads; i++) pthread_join(threadArray[i], NULL);
-                    }
-
+                        for (int i = 0; i < OMPNumThreads; i++) {
+                            if (intervalIndex > 0)
+                                for (int j = 0; j < intervalIndex; j++) {
+                                    threadArgument[i].passo = passo;
+                                    threadArgument[i].intervalIndex = intervalIndex;
+                                    pthread_create(&threadArray[i], NULL, rotinaStatic, (void*) &threadArgument[i]);
+                                }
+                            else {
+                                threadArgument[i].passo = passo;
+                                pthread_create(&threadArray[i], NULL, rotinaStatic, (void*) &threadArgument[i]);
+                            }
+                            
+                        }
+                       
                     }
                        
-            }
-            break;
             
+            break;
+            }
 
-
-            case DYNAMIC:
-                //
-            break;
-            case GUIDED:
-                //
-            break;
-            default:
-                //
-            break;
-        }
+        
+    }
 }
 
-void* rotinaStatic(void* data);
+}
