@@ -13,21 +13,17 @@ void* searchChar(void* args) {
     data* t_data = (data*) args;
     char tmp = 32;
 
-    for (int i = t_data->char_start; i <= t_data->char_end; i++) {
+    for (int i = t_data->char_start; i <= t_data->char_end && i < PASSWORD.length(); i++) {
         while (tmp != PASSWORD[i]) tmp++;
-        pthread_mutex_lock(&print_mutex);
         std::cout << "Procurando senha: " << SEARCHED_PASSWORD << std::endl;
         SEARCHED_PASSWORD[i] = tmp;
-        pthread_mutex_unlock(&print_mutex);
         tmp = 32;
-        
     }
 
     pthread_exit(NULL);
 }
 
 int main() {
-
     int n_threads, char_per_thread, last_char;
     pthread_mutex_init(&print_mutex, NULL);
 
