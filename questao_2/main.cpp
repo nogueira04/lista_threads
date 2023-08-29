@@ -1,8 +1,10 @@
 #include <iostream>
-#include <queue>
+#include <vector>
 
 #define UNVISITED 0
 #define VISITED 1
+
+enum Color { WHITE, GRAY, BLACK };
 
 template <typename E>
 class Link {
@@ -150,6 +152,8 @@ class Graph {
         Graph(const Graph&) {}               // Construtor cópia (?)
 
     public:
+
+        std::vector<Color> color;
 
         Graph() {}          // Construtor padrão
         virtual ~Graph() {} // Destrutor base
@@ -305,55 +309,65 @@ class Graphl : public Graph {
         
 };
 
-void DFS(Graph* G, int v) {
-    // previsit
-    std::cout << v << std::endl;
-    G->setMark(v, VISITED);
-    for (int w = G->first(v); w < G->n(); w = G->next(v, w)) 
-        if (G->getMark(w) == UNVISITED)
-            DFS(G, w);
-    // postvisit
-    
-}
+bool hasCyclev = false;
+pthread_t* threadArray;
+Graphl* G;
 
-void BFS(Graph* G, int start, std::queue<int>* Q) {
-    int v, w;
-    Q->push(start);
-    G->setMark(start, VISITED);
-    while (Q->size() != 0) {
-        v = Q->front();
-        Q->pop();
-        // previsit
-        std::cout << v << std::endl;
-        for (w = G->first(v); w < G->n(); w = G->next(v, w))
-            if (G->getMark(w) == UNVISITED) {
-                G->setMark(w, VISITED);
-                Q->push(w);
-            }
+void DFS(int v) {
+    G->color[v] = GRAY; // Marque o nó como visitado mas não totalmente explorado
+
+    for (int w = G->first(v); w < G->n(); w = G->next(v, w)) {
+        if (G->color[w] == GRAY) {
+            // Se o vizinho já estiver cinza (sendo explorado), um ciclo existe
+            hasCyclev = true;
+            return;
+        } else if (G->color[w] == WHITE) {
+            DFS(w);
+        }
     }
+
+    G->color[v] = BLACK; // Marque o nó atual e seus descendentes como totalmente explorados
 }
 
-void graphTraverse(Graph* G) {
-    std::queue<int>* queue = new std::queue<int>;
-    int v;
-    for (v = 0; v < G->n(); v++)
-        G->setMark(v, UNVISITED);
-    for (v = 0; v < G->n(); v++)
-        if (G->getMark(v) == UNVISITED)
-            BFS(G, v, queue);
+bool hasCycle() {
+    int numNodes = G->n();
+    G->color.assign(numNodes, WHITE); // Inicialize todos os nós como não visitados
+
+    for (int v = 0; v < numNodes; ++v) {
+        if (G->color[v] == WHITE) {
+            DFS(v);
+            if (hasCyclev) {
+                return true; // Se um ciclo for encontrado, pare a busca
+            }
+        }
+    }
+
+    return false; // Nenhum ciclo encontrado
 }
+
+void* rotina(void* args) {
+    hasCycle();
+    pthread_exit(NULL);
+}
+
 
 int main() {
 
-    Graphl* grafo = new Graphl(6);
+    G = new Graphl(6);
+    threadArray = new pthread_t[6];
 
-    grafo->setEdge(0, 1, 1);
-    grafo->setEdge(0, 2, 1);
-    grafo->setEdge(0, 3, 1);
-    grafo->setEdge(3, 5, 1);
-    grafo->setEdge(3, 4, 1);
+    G->setEdge(0, 1, 1);
+    G->setEdge(0, 2, 1);
+    G->setEdge(0, 3, 1);
+    G->setEdge(3, 5, 1);
+    G->setEdge(3, 4, 1);
+    G->setEdge(4, 5, 1);
+    G->setEdge(5, 3, 1); // aresta que gera ciclo
 
-    graphTraverse(grafo);
+    for (int i = 0; i < 6; i++) pthread_create(&threadArray[i], NULL, rotina, NULL);
+    for (int i = 0; i < 6; i++) pthread_join(threadArray[i], NULL);
+
+    std::cout << "Has cycle: " << hasCyclev << std::endl;
 
     return 0;
 }
